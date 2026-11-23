@@ -5,10 +5,19 @@ export function isRunning() { return !!stream; }
 
 export async function start(onPitch) {
   stop();
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-  });
+  if (!window.isSecureContext) { const e = new Error('insecure'); e.name = 'InsecureContext'; throw e; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { const e = new Error('nomedia'); e.name = 'NoMediaDevices'; throw e; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch (e) {
+    // Bei Berechtigungsproblemen nicht nochmal fragen; sonst mit einfachster Anfrage erneut versuchen
+    if (e.name === 'NotAllowedError' || e.name === 'SecurityError') throw e;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  }
   ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') await ctx.resume();
   const src = ctx.createMediaStreamSource(stream);
   const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 55;
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500;

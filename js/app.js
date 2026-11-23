@@ -727,7 +727,23 @@ function viewMic(tonart) {
       await P.start(onPitch);
       startBtn.replaceChildren('Mikrofon stoppen'); startBtn.classList.remove('primary');
     } catch (e) {
-      fb.replaceChildren(h('div', { class: 'fb bad' }, 'Kein Zugriff auf das Mikrofon. Bitte im Browser erlauben (die App muss über https laufen).'));
+      P.stop();
+      const why = {
+        NotAllowedError: ['Das Mikrofon ist für diese App gesperrt.', [
+          'In Chrome: auf das Schloss bzw. Einstellungs-Symbol links neben der Adresse tippen → Berechtigungen → Mikrofon → Zulassen.',
+          'Als installierte App: Chrome → ⋮ → Einstellungen → Website-Einstellungen → Mikrofon → diese Seite auf „Zulassen“ stellen.',
+          'Außerdem prüfen: Android-Einstellungen → Apps → Chrome → Berechtigungen → Mikrofon → „Bei Nutzung der App zulassen“.',
+          'Danach die App ganz schließen und neu öffnen.']],
+        SecurityError: ['Der Browser blockiert das Mikrofon aus Sicherheitsgründen.', ['Die App über die https-Adresse von GitHub öffnen.']],
+        InsecureContext: ['Die App läuft nicht über https.', ['Die App über die https://…github.io-Adresse öffnen, nicht als Datei oder über http.']],
+        NoMediaDevices: ['Dieser Browser unterstützt kein Mikrofon.', ['Bitte Chrome verwenden.']],
+        NotFoundError: ['Es wurde kein Mikrofon gefunden.', ['Prüfen, ob ein Headset oder Bluetooth-Gerät das Mikrofon belegt.']],
+        NotReadableError: ['Das Mikrofon wird gerade von einer anderen App benutzt.', ['Andere Apps mit Mikrofon (Telefon, Sprachaufnahme, Stimmgerät-App) schließen und nochmal versuchen.']],
+      }[e.name] || ['Das Mikrofon konnte nicht gestartet werden.', ['Die App ganz schließen und neu öffnen, dann nochmal versuchen.']];
+      fb.replaceChildren(h('div', { class: 'card micerr' },
+        h('div', { class: 'fb bad' }, why[0]),
+        h('ol', {}, ...why[1].map(t => h('li', {}, t))),
+        h('div', { class: 'muted small' }, `Fehlercode: ${e.name || 'unbekannt'}${e.message ? ' – ' + e.message : ''}`)));
     }
   };
 
@@ -815,7 +831,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.2 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.3 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();
