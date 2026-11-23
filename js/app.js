@@ -75,6 +75,7 @@ function level() { return M.levelById(S().level); }
 const MODES = {
   noten: { n: 1, short: 'Noten', title: 'Noten lernen', sub: 'Note sehen – Tonnamen finden', zug: false, askName: true, color: 'var(--blue)' },
   notenZug: { n: 2, short: 'Noten + Zug', title: 'Noten + Zug lernen', sub: 'Tonname und Zugposition', zug: true, askName: true, color: 'var(--brass)' },
+  spiel: { n: 4, short: 'Spielen', title: 'Spiel die Note', sub: 'Mit der Posaune spielen – Mikrofon hört zu', zug: true, askName: false, color: M.POS_COLORS[5] },
   zug: { n: 3, short: 'Zug', title: 'Nur Zug lernen', sub: 'Note sehen – Zug finden', zug: true, askName: false, color: M.POS_COLORS[4] },
 };
 // Tonart-Kennung: 'stamm' | 'mix' | 'dur-<i>' | 'moll-<i>'
@@ -114,11 +115,12 @@ function route() {
   window.scrollTo(0, 0);
   $app.replaceChildren();
   if (!a) return viewHome();
+  if (a === 'learn' && b === 'spiel' && c) return viewMic(c);
   if (a === 'learn' && MODES[b]) return c ? viewLearn(b, c) : viewTonart(b);
   if (a === 'natur') return viewNatur();
   if (a === 'reverse') return viewReverse();
   if (a === 'tempo') return viewTempo();
-  if (a === 'mic') return viewMic();
+  if (a === 'tuner') return viewMic(null);
   if (a === 'stats') return viewStats();
   if (a === 'settings') return viewSettings();
   viewHome();
@@ -147,14 +149,14 @@ function viewHome() {
       ),
       h('h2', { class: 'sect' }, 'Lernen'),
       h('div', { class: 'tiles' },
-        ...Object.entries(MODES).map(([k, m]) => tile(`#/learn/${k}`, m.n, m.title, m.sub, m.color)),
+        ...Object.entries(MODES).sort((a, b) => a[1].n - b[1].n).map(([k, m]) => tile(`#/learn/${k}`, m.n, m.title, m.sub, m.color)),
       ),
       h('h2', { class: 'sect' }, 'Mehr üben'),
       h('div', { class: 'tiles' },
         tile('#/natur', null, 'Naturtonreihe', 'Welche Töne liegen auf einem Zug?', M.POS_COLORS[3], 'wave'),
         tile('#/reverse', null, 'Zug-Abfrage', 'Zug gegeben – passende Noten finden', M.POS_COLORS[4], 'swap'),
         tile('#/tempo', null, 'Tempo-Runde', '20 Noten auf Zeit', M.POS_COLORS[6], 'timer'),
-        tile('#/mic', null, 'Spiel die Note', 'Mit Mikrofon und Stimmgerät', M.POS_COLORS[5], 'mic'),
+        tile('#/tuner', null, 'Stimmgerät', 'Zeigt, ob dein Ton sauber ist', M.POS_COLORS[5], 'mic'),
       ),
       h('div', { class: 'tiles two' },
         tile('#/stats', null, 'Statistik', 'Trefferquote und Problemnoten', M.POS_COLORS[1], 'chart'),
@@ -223,6 +225,20 @@ function viewTonart(mode) {
 }
 
 // ---------- Bereich: Anschauen / Abfragen ----------
+function applyTonart(tonart) {
+  if (tonart === 'stamm' || tonart === 'mix') return;
+  const [md, i] = tonart.split('-');
+  const sc = scaleState();
+  if (sc.mode !== md || sc.key !== +i) { sc.mode = md; sc.key = +i; sc.oct = 'auto'; store.save(); }
+}
+function tonartPool(tonart) {
+  const lv = level();
+  if (tonart === 'stamm') return { pool: M.naturalsInRange(lv.lo, lv.hi).map(n => ({ note: n, w: 1 })), sig: null, accMode: 'each' };
+  if (tonart === 'mix') return { pool: M.mixedPool(lv.lo, lv.hi), sig: null, accMode: 'each' };
+  applyTonart(tonart);
+  const c = currentScale();
+  return { pool: c.pool.map(n => ({ note: n, w: 1 })), sig: c.sig, accMode: scaleState().accMode };
+}
 function viewLearn(mode, tonart) {
   const area = { ...MODES[mode] };
   area.kind = tonart === 'stamm' ? 'natural' : tonart === 'mix' ? 'mixed' : 'scale';
@@ -643,11 +659,13 @@ function viewTempo() {
 }
 
 // ---------- Mikrofon ----------
-function viewMic() {
+function viewMic(tonart) {
   const main = h('main');
-  $app.append(header('Spiel die Note'), main);
-  let mode = sessionStorage.getItem('mic.m') || 'play';
-  let variant = sessionStorage.getItem('mic.v') || 'stamm';
+  if (tonart) (store.data.lastTonart ??= {}).spiel = tonart, store.save();
+  const tShort = !tonart ? '' : tonart === 'mix' ? 'Gemischt' : tonart === 'stamm' ? 'Stammtöne' : tonartLabel(tonart);
+  $app.append(header(tonart ? `Spielen · ${tShort}` : 'Stimmgerät', tonart ? '#/learn/spiel' : true), main);
+  let mode = tonart ? 'play' : 'tuner';
+  const src = tonart ? tonartPool(tonart) : null;
   let showZug = false;
   let target = null, holdStart = 0, hits = 0, tries = 0, locked = false;
   const nameEl = h('div', { class: 'mname' }, '–');
@@ -661,9 +679,8 @@ function viewMic() {
   cleanup = () => P.stop();
 
   function newTarget() {
-    const lv = level();
-    const pool = variant === 'stamm' ? M.naturalsInRange(lv.lo, lv.hi).map(n => ({ note: n, w: 1 })) : M.mixedPool(lv.lo, lv.hi);
-    let n; do { n = weightedPick(pool); } while (target && M.midiOf(n) === M.midiOf(target));
+    const pool = src.pool;
+    let n, guard = 0; do { n = weightedPick(pool); } while (target && M.midiOf(n) === M.midiOf(target) && pool.length > 1 && guard++ < 30);
     target = n; holdStart = 0; locked = false;
     drawTarget();
     fb.replaceChildren();
@@ -671,7 +688,7 @@ function viewMic() {
   function drawTarget() {
     if (mode !== 'play' || !target) { targetBox.replaceChildren(); return; }
     const ps = M.positionsOf(target);
-    targetBox.replaceChildren(renderStaff([{ note: target }], { fit: true, spacing: 80 }),
+    targetBox.replaceChildren(renderStaff([{ note: target }], { sig: src.sig, accMode: src.accMode, fit: true, spacing: 80 }),
       h('div', { class: 'toggles' },
         toggle('Zug zeigen', showZug, v => { showZug = v; drawTarget(); }),
         showZug && ps ? h('span', {}, ...ps.map((p, j) => posBadge(p, true, j > 0))) : null,
@@ -716,12 +733,11 @@ function viewMic() {
 
   function render() {
     main.replaceChildren(
-      seg([['play', 'Spiel die Note'], ['tuner', 'Stimmgerät']], mode, v => { mode = v; sessionStorage.setItem('mic.m', v); render(); }, 'big'),
-      mode === 'play' ? h('div', { class: 'prow' }, seg([['stamm', 'Stammtöne'], ['mix', 'Gemischt']], variant, v => { variant = v; sessionStorage.setItem('mic.v', v); target = null; newTarget(); render(); })) : null,
       mode === 'play' ? h('p', { class: 'hint' }, 'Spiel die angezeigte Note. Wenn du sie kurz sauber hältst, kommt die nächste.') : h('p', { class: 'hint' }, 'Spiel einen Ton – die Nadel zeigt, ob du zu hoch oder zu tief bist.'),
       mode === 'play' ? targetBox : null,
       h('div', { class: 'card meter' }, nameEl, gauge, centEl, scoreEl),
       startBtn, fb,
+      tonart && tonart !== 'stamm' && tonart !== 'mix' ? scalePicker(route) : null,
     );
     if (mode === 'play' && !target) newTarget(); else drawTarget();
     upd();
@@ -799,7 +815,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.1 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.2 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();

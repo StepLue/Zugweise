@@ -20,13 +20,12 @@ function renderWav(midi, dur) {
   let peak = 0;
   for (let i = 0; i < n; i++) {
     const t = i / SR;
-    const att = Math.min(1, t / 0.07);
-    const rel = t > dur ? Math.max(0, 1 - (t - dur) / 0.2) : 1;
-    const env = att * (0.85 + 0.15 * Math.exp(-t * 4)) * rel;
-    const bright = 0.35 + 0.65 * Math.min(1, t / 0.12); // Ansatz: erst dunkel, dann heller
-    const vib = 1 + 0.003 * Math.sin(2 * Math.PI * 5 * t) * Math.min(1, t / 0.5);
+    // gerader, sauberer Ton: kurzer weicher Ansatz, gleichbleibende Lautstärke, kein Vibrato
+    const att = Math.min(1, t / 0.04);
+    const rel = t > dur ? Math.max(0, 1 - (t - dur) / 0.15) : 1;
+    const env = att * rel;
     let s = 0;
-    for (let h = 1; h <= maxH; h++) s += amps[h - 1] * Math.pow(bright, h - 1) * Math.sin(2 * Math.PI * f * h * vib * t);
+    for (let h = 1; h <= maxH; h++) s += amps[h - 1] * Math.sin(2 * Math.PI * f * h * t);
     data[i] = s * env;
     if (Math.abs(data[i]) > peak) peak = Math.abs(data[i]);
   }
