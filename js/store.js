@@ -2,7 +2,7 @@
 const KEY = 'zugweise.v1';
 
 const DEFAULT = {
-  settings: { sound: true, volume: 0.7, theme: 'auto', roundLen: 20, level: 1, unlocked: 1, passes: 0, showNames: true },
+  settings: { sound: true, volume: 0.7, theme: 'auto', roundLen: 20, level: 1, unlocked: 1, passes: 0, showNames: true, keepAwake: true },
   scale: { mode: 'dur', key: 0, form: 'natuerlich', oct: 'auto', accMode: 'sig' },
   stats: { notes: {}, days: {}, rounds: 0, best: {} },
 };

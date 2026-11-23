@@ -725,6 +725,7 @@ function viewMic(tonart) {
     if (P.isRunning()) { P.stop(); startBtn.replaceChildren(icon('mic', 18), 'Mikrofon starten'); startBtn.classList.add('primary'); return; }
     try {
       await P.start(onPitch);
+      keepAwake();
       startBtn.replaceChildren('Mikrofon stoppen'); startBtn.classList.remove('primary');
     } catch (e) {
       P.stop();
@@ -817,6 +818,8 @@ function viewSettings() {
     main.replaceChildren(
       h('div', { class: 'card set' },
         h('div', { class: 'srow' }, h('span', {}, 'Ton'), toggle(st.sound ? 'An' : 'Aus', st.sound, v => { st.sound = v; store.save(); render(); })),
+        h('div', { class: 'srow' }, h('span', {}, 'Bildschirm anlassen'), toggle(st.keepAwake !== false ? 'An' : 'Aus', st.keepAwake !== false, v => { st.keepAwake = v; store.save(); v ? keepAwake() : releaseAwake(); render(); })),
+        'wakeLock' in navigator ? null : h('p', { class: 'muted small' }, 'Dein Browser unterstützt das Anlassen des Bildschirms nicht.'),
         h('div', { class: 'srow' }, h('span', {}, 'Lautstärke'), h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: st.volume, oninput: (e) => { st.volume = +e.target.value; A.setVolume(st.volume); store.save(); }, onchange: () => { A.unlock(); A.playMidi(53); } })),
         h('div', { class: 'srow' }, h('span', {}, 'Darstellung'), seg([['auto', 'Automatisch'], ['light', 'Hell'], ['dark', 'Dunkel']], st.theme, v => { st.theme = v; store.save(); applyTheme(); render(); }, 'small')),
         h('div', { class: 'srow' }, h('span', {}, 'Fragen pro Runde'), seg([[10, '10'], [20, '20'], [30, '30']], st.roundLen, v => { st.roundLen = v; store.save(); render(); }, 'small')),
@@ -831,7 +834,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.3 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.4 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();
@@ -843,6 +846,17 @@ function applyTheme() {
   document.documentElement.dataset.theme = t === 'auto' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : t;
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+
+// ---------- Bildschirm anlassen (Wake Lock) ----------
+let wakeLock = null;
+async function keepAwake() {
+  if (S().keepAwake === false || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+  if (wakeLock && !wakeLock.released) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch { wakeLock = null; }
+}
+function releaseAwake() { if (wakeLock) { wakeLock.release().catch(() => { }); wakeLock = null; } }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+document.addEventListener('click', keepAwake);
 applyTheme();
 A.setVolume(S().volume);
 document.addEventListener('pointerdown', () => A.unlock(), { once: true });
