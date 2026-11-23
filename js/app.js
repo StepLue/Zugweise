@@ -72,19 +72,26 @@ function posBadge(p, small = false, alt = false) {
 function level() { return M.levelById(S().level); }
 
 // ---------- Bereiche ----------
-const AREAS = {
-  stamm: { n: 1, title: 'Stammtöne', sub: 'Noten ohne Vorzeichen', zug: false, kind: 'natural' },
-  stammZug: { n: 2, title: 'Stammtöne + Zug', sub: 'Noten ohne Vorzeichen mit Zugposition', zug: true, kind: 'natural' },
-  leiter: { n: 3, title: 'Tonleitern', sub: 'Dur und Moll nach Auswahl', zug: false, kind: 'scale' },
-  leiterZug: { n: 4, title: 'Tonleitern + Zug', sub: 'Dur und Moll mit Zugposition', zug: true, kind: 'scale' },
-  mix: { n: 5, title: 'Gemischte Vorzeichen', sub: '♯ ♭ gemischt mit Zugposition', zug: true, kind: 'mixed' },
+const MODES = {
+  noten: { n: 1, short: 'Noten', title: 'Noten lernen', sub: 'Note sehen – Tonnamen finden', zug: false, askName: true, color: 'var(--blue)' },
+  notenZug: { n: 2, short: 'Noten + Zug', title: 'Noten + Zug lernen', sub: 'Tonname und Zugposition', zug: true, askName: true, color: 'var(--brass)' },
+  zug: { n: 3, short: 'Zug', title: 'Nur Zug lernen', sub: 'Note sehen – Zug finden', zug: true, askName: false, color: M.POS_COLORS[4] },
 };
+// Tonart-Kennung: 'stamm' | 'mix' | 'dur-<i>' | 'moll-<i>'
+function tonartLabel(t) {
+  if (t === 'stamm') return 'Ohne Vorzeichen';
+  if (t === 'mix') return 'Gemischte Vorzeichen';
+  const [mode, i] = t.split('-');
+  const k = (mode === 'dur' ? M.MAJOR_KEYS : M.MINOR_KEYS)[+i];
+  return k ? M.keyName(k, mode) : 'Ohne Vorzeichen';
+}
 
 // ---------- Header ----------
 function header(title, back = true, extra) {
+  const backHref = typeof back === 'string' ? back : '#/';
   const soundBtn = h('button', { class: 'iconbtn', 'aria-label': 'Ton an/aus', onclick: () => { S().sound = !S().sound; store.save(); soundBtn.replaceChildren(icon(S().sound ? 'sound' : 'mute')); if (S().sound) A.unlock(); } }, icon(S().sound ? 'sound' : 'mute'));
   return h('header', { class: 'top' },
-    back ? h('button', { class: 'iconbtn', 'aria-label': 'Zurück', onclick: () => go('#/') }, icon('back')) : h('div', { class: 'logo' }, logo()),
+    back ? h('button', { class: 'iconbtn', 'aria-label': 'Zurück', onclick: () => go(backHref) }, icon('back')) : h('div', { class: 'logo' }, logo()),
     h('h1', {}, title),
     extra || null,
     soundBtn,
@@ -103,11 +110,11 @@ function go(hash) { if (location.hash === hash) route(); else location.hash = ha
 function route() {
   if (cleanup) { try { cleanup(); } catch { } cleanup = null; }
   const hsh = location.hash || '#/';
-  const [, a, b] = hsh.split('/');
+  const [, a, b, c] = hsh.split('/');
   window.scrollTo(0, 0);
   $app.replaceChildren();
   if (!a) return viewHome();
-  if (a === 'area' && AREAS[b]) return viewArea(b);
+  if (a === 'learn' && MODES[b]) return c ? viewLearn(b, c) : viewTonart(b);
   if (a === 'natur') return viewNatur();
   if (a === 'reverse') return viewReverse();
   if (a === 'tempo') return viewTempo();
@@ -138,9 +145,9 @@ function viewHome() {
         ),
         h('div', { class: 'hero-r' }, h('div', { class: 'streak' }, h('b', {}, String(streak())), h('span', {}, 'Tage am Stück'))),
       ),
-      h('h2', { class: 'sect' }, 'Noten lesen'),
+      h('h2', { class: 'sect' }, 'Lernen'),
       h('div', { class: 'tiles' },
-        ...Object.entries(AREAS).map(([k, a]) => tile(`#/area/${k}`, a.n, a.title, a.sub, a.zug ? 'var(--brass)' : 'var(--blue)')),
+        ...Object.entries(MODES).map(([k, m]) => tile(`#/learn/${k}`, m.n, m.title, m.sub, m.color)),
       ),
       h('h2', { class: 'sect' }, 'Mehr üben'),
       h('div', { class: 'tiles' },
@@ -181,31 +188,56 @@ function scalePicker(onChange) {
   const sc = scaleState();
   const cur = currentScale();
   const set = (k, v) => { sc[k] = v; store.save(); onChange(); };
-  const keys = sc.mode === 'dur' ? M.MAJOR_KEYS : M.MINOR_KEYS;
-  const box = h('div', { class: 'card picker' },
-    h('div', { class: 'prow' }, seg([['dur', 'Dur'], ['moll', 'Moll']], sc.mode, v => { sc.mode = v; sc.key = 0; sc.oct = 'auto'; store.save(); onChange(); })),
-    h('div', { class: 'chips keys' }, ...keys.map((k, i) => {
-      const sig = M.keySignature(k, sc.mode);
-      const nm = M.pcName(M.mk(k[0], k[1], 3));
-      return chip(h('span', {}, sc.mode === 'dur' ? nm : nm.toLowerCase(), h('small', {}, sig.count ? `${sig.count}${sig.type > 0 ? '♯' : '♭'}` : '–')), i === sc.key, () => { sc.key = i; sc.oct = 'auto'; store.save(); onChange(); });
-    })),
-    sc.mode === 'moll' ? h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Form'), seg(M.MOLL_FORMS, sc.form, v => set('form', v), 'small')) : null,
+  return h('div', { class: 'card picker' },
+    sc.mode === 'moll' ? h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Moll-Form'), seg(M.MOLL_FORMS, sc.form, v => set('form', v), 'small')) : null,
     h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Lage'),
       h('div', { class: 'chips' },
         ...cur.octs.map(o => chip(`ab ${M.noteName(M.mk(cur.tonic[0], cur.tonic[1], o))}`, cur.oct === o, () => set('oct', o), 'sm')),
         chip('Ganzer Tonumfang', cur.oct === 'all', () => set('oct', 'all'), 'sm'))),
     h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Vorzeichen'), seg([['sig', 'Vorzeichnung'], ['each', 'Vor jeder Note']], sc.accMode, v => set('accMode', v), 'small')),
   );
-  return box;
+}
+
+// ---------- Tonart-Auswahl ----------
+function viewTonart(mode) {
+  const m = MODES[mode];
+  const last = store.data.lastTonart?.[mode];
+  const main = h('main');
+  $app.append(header(m.title), main);
+  const goT = (t) => go(`#/learn/${mode}/${t}`);
+  const keyChip = (k, i, md) => {
+    const sig = M.keySignature(k, md);
+    const nm = M.pcName(M.mk(k[0], k[1], 3));
+    const t = `${md}-${i}`;
+    return chip(h('span', {}, md === 'dur' ? nm : nm.toLowerCase(), h('small', {}, sig.count ? `${sig.count}${sig.type > 0 ? '♯' : '♭'}` : '–')), t === last, () => goT(t));
+  };
+  const big = (t, title, sub) => h('button', { class: 'tile wide' + (t === last ? ' on' : ''), onclick: () => goT(t) },
+    h('div', {}, h('div', { class: 'tt' }, title), h('div', { class: 'ts' }, sub)));
+  main.append(
+    h('p', { class: 'hint' }, 'Welche Tonart möchtest du lernen?'),
+    big('stamm', 'Ohne Vorzeichen', `Stammtöne C D E F G A H · Stufe ${level().id} (${level().label})`),
+    h('div', { class: 'card' }, h('div', { class: 'ctitle' }, 'Dur'), h('div', { class: 'chips keys' }, ...M.MAJOR_KEYS.map((k, i) => keyChip(k, i, 'dur')))),
+    h('div', { class: 'card' }, h('div', { class: 'ctitle' }, 'Moll'), h('div', { class: 'chips keys' }, ...M.MINOR_KEYS.map((k, i) => keyChip(k, i, 'moll')))),
+    big('mix', 'Gemischte Vorzeichen', '♯ und ♭ bunt gemischt, auch enharmonisch'),
+  );
 }
 
 // ---------- Bereich: Anschauen / Abfragen ----------
-function viewArea(key) {
-  const area = AREAS[key];
+function viewLearn(mode, tonart) {
+  const area = { ...MODES[mode] };
+  area.kind = tonart === 'stamm' ? 'natural' : tonart === 'mix' ? 'mixed' : 'scale';
+  if (area.kind === 'scale') {
+    const [md, i] = tonart.split('-');
+    const sc = scaleState();
+    if (sc.mode !== md || sc.key !== +i) { sc.mode = md; sc.key = +i; sc.oct = 'auto'; }
+  }
+  (store.data.lastTonart ??= {})[mode] = tonart; store.save();
+  const key = mode;
   let tab = sessionStorage.getItem('tab.' + key) || 'look';
+  const backTo = `#/learn/${mode}`;
   let mixSet = null;
   const main = h('main');
-  $app.append(header(`${area.n} · ${area.title}`), main);
+  $app.append(header(`${area.short} · ${tonart === 'mix' ? 'Gemischt' : tonart === 'stamm' ? 'Stammtöne' : tonartLabel(tonart)}`, backTo), main);
 
   function render() {
     main.replaceChildren();
@@ -232,7 +264,7 @@ function viewArea(key) {
   function renderLook() {
     const src = source();
     let sel = -1;
-    let showNames = S().showNames, showZug = area.zug;
+    let showNames = area.askName ? S().showNames : false, showZug = area.zug;
     const staffWrap = h('div', { class: 'staffscroll' });
     const detail = h('div', { class: 'detail' });
     const noteIdx = src.items.map((it, i) => it.note ? i : -1).filter(i => i >= 0);
@@ -252,7 +284,7 @@ function viewArea(key) {
       let k = noteIdx.indexOf(sel); k = k < 0 ? 0 : (k + d + noteIdx.length) % noteIdx.length; select(noteIdx[k]);
     }
     const toggles = h('div', { class: 'toggles' },
-      toggle('Namen', showNames, v => { showNames = v; S().showNames = v; store.save(); draw(); }),
+      toggle('Namen', showNames, v => { showNames = v; if (area.askName) { S().showNames = v; store.save(); } draw(); }),
       area.zug ? toggle('Zug', showZug, v => { showZug = v; draw(); }) : null,
       h('div', { class: 'grow' }),
       area.kind === 'mixed' ? h('button', { class: 'btn ghost', onclick: () => { mixSet = null; render(); } }, icon('shuffle', 18), 'Neu mischen') : null,
@@ -269,13 +301,13 @@ function viewArea(key) {
   function renderQuizStart() {
     const src = source();
     const len = S().roundLen;
-    const last = store.data.stats.last?.[key];
+    const last = store.data.stats.last?.[key + '/' + tonart];
     main.append(h('div', { class: 'card start' },
       h('div', { class: 'ctitle' }, src.title),
-      h('p', {}, area.zug ? 'Du siehst eine Note und wählst zuerst den Tonnamen, dann den Zug.' : 'Du siehst eine Note und wählst den Tonnamen.'),
+      h('p', {}, !area.askName ? 'Du siehst eine Note und wählst den Zug.' : area.zug ? 'Du siehst eine Note und wählst zuerst den Tonnamen, dann den Zug.' : 'Du siehst eine Note und wählst den Tonnamen.'),
       h('p', { class: 'muted small' }, `${len} Fragen pro Runde. Noten, die du oft falsch hast, kommen häufiger dran.`),
       last ? h('p', { class: 'muted small' }, `Letzte Runde: ${last.ok}/${last.n} richtig (${Math.round(last.ok / last.n * 100)} %)`) : null,
-      h('button', { class: 'btn primary wide', onclick: () => { A.unlock(); runQuiz(main, { key, area, src, len, onExit: render }); } }, 'Runde starten'),
+      h('button', { class: 'btn primary wide', onclick: () => { A.unlock(); runQuiz(main, { key, area, src, len, onExit: render, lastKey: key + '/' + tonart }); } }, 'Runde starten'),
     ));
   }
 
@@ -337,7 +369,10 @@ function adaptivePool(areaKey, pool) {
   });
 }
 
-function runQuiz(main, { key, area, src, len, onExit, only }) {
+let quizTimer = null;
+function runQuiz(main, { key, area, src, len, onExit: exit0, only, lastKey }) {
+  const onExit = () => { clearTimeout(quizTimer); exit0(); };
+  cleanup = () => clearTimeout(quizTimer);
   let i = 0, ok = 0; const missed = []; let lastId = null;
   const pool = only ? only.map(n => ({ note: n, w: 1 })) : adaptivePool(key, src.pool);
   const q = h('div', { class: 'quiz' });
@@ -357,11 +392,11 @@ function runQuiz(main, { key, area, src, len, onExit, only }) {
     const choices = src.choices || M.mixedChoices(n);
     const staff = renderStaff([{ note: n }], { sig: src.sig, accMode: src.accMode, fit: true, spacing: 80 });
     const fb = h('div', { class: 'feedback' });
-    const nameRow = h('div', { class: 'answers names' + (choices.length > 7 ? ' many' : '') });
-    const posRow = area.zug ? h('div', { class: 'answers zug' }) : null;
+    const nameRow = area.askName ? h('div', { class: 'answers names' + (choices.length > 7 ? ' many' : '') }) : null;
+    const posRow = area.zug ? h('div', { class: 'answers zug' + (area.askName ? '' : ' ready') }) : null;
     const tb = area.zug ? h('div', { class: 'tbwrap' }) : null;
-    choices.forEach(c => nameRow.append(h('button', { class: 'ans', onclick: (e) => { chosenName = c; nameRow.querySelectorAll('.ans').forEach(b => b.classList.remove('picked')); e.currentTarget.classList.add('picked'); if (area.zug) posRow.classList.add('ready'); else evaluate(); } }, M.pcName(M.mk(c.letter, c.acc, 3)))));
-    if (area.zug) for (let p = 1; p <= 7; p++) posRow.append(h('button', { class: 'ans posbtn', style: { '--pc': M.POS_COLORS[p] }, onclick: (e) => { if (!chosenName) { toast('Wähle zuerst den Tonnamen.'); return; } chosenPos = p; e.currentTarget.classList.add('picked'); evaluate(); } }, String(p)));
+    if (nameRow) choices.forEach(c => nameRow.append(h('button', { class: 'ans', onclick: (e) => { chosenName = c; nameRow.querySelectorAll('.ans').forEach(b => b.classList.remove('picked')); e.currentTarget.classList.add('picked'); if (area.zug) posRow.classList.add('ready'); else evaluate(); } }, M.pcName(M.mk(c.letter, c.acc, 3)))));
+    if (area.zug) for (let p = 1; p <= 7; p++) posRow.append(h('button', { class: 'ans posbtn', style: { '--pc': M.POS_COLORS[p] }, onclick: (e) => { if (area.askName && !chosenName) { toast('Wähle zuerst den Tonnamen.'); return; } chosenPos = p; e.currentTarget.classList.add('picked'); evaluate(); } }, String(p)));
 
     q.replaceChildren(
       h('div', { class: 'qtop' },
@@ -369,18 +404,19 @@ function runQuiz(main, { key, area, src, len, onExit, only }) {
         h('div', { class: 'qprog' }, h('i', { style: { width: `${(i / len) * 100}%` } })),
         h('div', { class: 'qcount' }, `${i + 1}/${len}`)),
       h('div', { class: 'card qcard' }, staff, tb),
-      h('div', { class: 'qlabel' }, 'Tonname'), nameRow,
+      nameRow ? h('div', { class: 'qlabel' }, 'Tonname') : null, nameRow,
       area.zug ? h('div', { class: 'qlabel' }, 'Zug') : null, posRow,
       fb,
     );
 
     function evaluate() {
-      const nameOk = M.samePcName(chosenName, n);
+      const nameOk = !area.askName || M.samePcName(chosenName, n);
       const posOk = !area.zug || (ps && ps.includes(chosenPos));
       const good = nameOk && posOk;
       record(key, M.idOf(n), good);
       q.querySelectorAll('.ans').forEach(b => b.disabled = true);
-      [...nameRow.children].forEach((b, k) => { if (M.samePcName(choices[k], n)) b.classList.add('right'); else if (b.classList.contains('picked')) b.classList.add('wrong'); });
+      q.querySelectorAll('.answers').forEach(r => r.classList.add('done'));
+      if (nameRow) [...nameRow.children].forEach((b, k) => { if (M.samePcName(choices[k], n)) b.classList.add('right'); else if (b.classList.contains('picked')) b.classList.add('wrong'); });
       if (posRow) [...posRow.children].forEach((b, k) => { const p = k + 1; if (ps && ps[0] === p) b.classList.add('right'); else if (ps && ps.includes(p)) b.classList.add('rightalt'); if (b.classList.contains('picked') && !(ps && ps.includes(p))) b.classList.add('wrong'); });
       if (tb && ps) { tb.replaceChildren(renderTrombone(1)); setTimeout(() => tb.firstChild?.setPos(ps[0]), 30); }
       play(n);
@@ -389,7 +425,12 @@ function runQuiz(main, { key, area, src, len, onExit, only }) {
         ok++;
         const altMsg = area.zug && chosenPos !== ps[0] ? ` – Hauptzug ist ${ps[0]}` : '';
         fb.replaceChildren(h('div', { class: 'fb ok' }, icon('check', 20), `Richtig: ${M.noteName(n)}${area.zug ? `, Zug ${chosenPos}` : ''}${altMsg}`));
-        setTimeout(next, area.zug ? 1400 : 900);
+        if (area.zug) {
+          const WAIT = 5000;
+          fb.append(h('div', { class: 'waitbar' }, h('i', { style: { animationDuration: WAIT + 'ms' } })),
+            h('button', { class: 'btn primary wide', onclick: () => { clearTimeout(quizTimer); next(); } }, 'Weiter'));
+          quizTimer = setTimeout(next, WAIT);
+        } else quizTimer = setTimeout(next, 900);
       } else {
         missed.push(n);
         fb.replaceChildren(
@@ -402,7 +443,7 @@ function runQuiz(main, { key, area, src, len, onExit, only }) {
   function finish() {
     const pct = Math.round(ok / len * 100);
     store.data.stats.rounds++;
-    (store.data.stats.last ??= {})[key] = { ok, n: len, date: today() };
+    (store.data.stats.last ??= {})[lastKey || key] = { ok, n: len, date: today() };
     let lvMsg = null;
     const st = S();
     if (!only && pct >= 90 && st.level === st.unlocked && st.unlocked < 5) {
@@ -422,8 +463,8 @@ function runQuiz(main, { key, area, src, len, onExit, only }) {
       uniq.length ? h('div', { class: 'card' }, h('div', { class: 'ctitle' }, 'Diese Noten waren falsch'),
         h('div', { class: 'staffscroll' }, renderStaff(uniq.map(n => ({ note: n })), { sig: src.sig, accMode: src.accMode, names: true, zug: area.zug, scale: 1.15, onTap: (k) => play(uniq[k]) }))) : null,
       h('div', { class: 'rbtns' },
-        uniq.length ? h('button', { class: 'btn', onclick: () => runQuiz(main, { key, area, src, len: Math.max(5, uniq.length * 2), onExit, only: uniq }) }, 'Fehler üben') : null,
-        h('button', { class: 'btn primary', onclick: () => runQuiz(main, { key, area, src, len, onExit }) }, 'Neue Runde'),
+        uniq.length ? h('button', { class: 'btn', onclick: () => runQuiz(main, { key, area, src, len: Math.max(5, uniq.length * 2), onExit: exit0, only: uniq, lastKey }) }, 'Fehler üben') : null,
+        h('button', { class: 'btn primary', onclick: () => runQuiz(main, { key, area, src, len, onExit: exit0, lastKey }) }, 'Neue Runde'),
         h('button', { class: 'btn ghost', onclick: onExit }, 'Fertig'),
       ),
     );
@@ -758,7 +799,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.0 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.1 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();

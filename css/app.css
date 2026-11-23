@@ -232,3 +232,12 @@ main { max-width: 760px; margin: 0 auto; padding: 12px 14px 48px; display: flex;
   .plabel { min-width: 0; width: 100%; }
 }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.tile.wide { width: 100%; text-align: left; font: inherit; color: inherit; }
+.tile.on { border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass); }
+.waitbar { height: 6px; border-radius: 3px; background: var(--soft); overflow: hidden; }
+.waitbar i { display: block; height: 100%; width: 100%; background: var(--ok); transform-origin: left; animation: wait linear forwards; }
+@keyframes wait { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.ans.posbtn.right { background: var(--pc) !important; border-color: var(--pc) !important; box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--ok); }
+.ans.posbtn.wrong { background: var(--pc) !important; border-color: var(--pc) !important; box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--bad); }
+.answers.done .ans:not(.right):not(.wrong):not(.rightalt) { opacity: .3; }
+.answers.zug.done { opacity: 1; }
