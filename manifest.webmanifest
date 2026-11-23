@@ -1,0 +1,17 @@
+{
+  "name": "Zugweise – Posaune lernen",
+  "short_name": "Zugweise",
+  "description": "Noten lesen und Zugpositionen lernen für Tenorposaune",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F6F2EA",
+  "theme_color": "#C2902A",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
