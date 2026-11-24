@@ -87,7 +87,7 @@ export function renderStaff(items, opts = {}) {
   const height = labelY + labelH + 6;
   const clefW = 44;
   const g0 = document.createElementNS(NS, 'svg');
-  const startX = clefW + (sig ? sig.count * 10 + 10 : 0) + 22;
+  const startX = opts.noClef ? (opts.startX ?? 0) : clefW + (sig ? sig.count * 10 + 10 : 0) + 22;
   let width = startX + items.length * spacing + 10;
   if (opts.minWidth) width = Math.max(width, opts.minWidth);
   g0.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -97,11 +97,16 @@ export function renderStaff(items, opts = {}) {
   g0.setAttribute('role', 'img');
 
   const lines = el('g', { class: 'staff-lines' }, g0);
-  for (let d = 18; d <= 26; d += 2) el('line', { x1: 4, y1: yOf(d), x2: width - 4, y2: yOf(d) }, lines);
-  el('line', { x1: width - 4, y1: yOf(18), x2: width - 4, y2: yOf(26), class: 'barline' }, lines);
+  const lx0 = opts.noClef ? 0 : 4, lx1 = opts.openEnd ? width : width - 4;
+  for (let d = 18; d <= 26; d += 2) el('line', { x1: lx0, y1: yOf(d), x2: lx1, y2: yOf(d) }, lines);
+  if (!opts.openEnd) el('line', { x1: width - 4, y1: yOf(18), x2: width - 4, y2: yOf(26), class: 'barline' }, lines);
   const ink = el('g', { class: 'ink' }, g0);
-  clefPath(ink, 10, yOf(24));
-  if (sig) drawKeySig(ink, sig, clefW, yOf);
+  if (!opts.noClef) {
+    clefPath(ink, 10, yOf(24));
+    if (sig) drawKeySig(ink, sig, clefW, yOf);
+  }
+  g0.xOf = (i) => startX + i * spacing + spacing / 2 - 10;
+  g0.vbWidth = width; g0.vbHeight = height;
 
   items.forEach((it, i) => {
     const x = startX + i * spacing + spacing / 2 - 10;

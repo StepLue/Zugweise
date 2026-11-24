@@ -242,3 +242,22 @@ main { max-width: 760px; margin: 0 auto; padding: 12px 14px 48px; display: flex;
 .answers.done .ans:not(.right):not(.wrong):not(.rightalt) { opacity: .3; }
 .answers.zug.done { opacity: 1; }
 .micerr ol { margin: 10px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.nchip { display: inline-flex; align-items: center; gap: 6px; min-width: 52px; justify-content: center; }
+.nchip i { width: 8px; height: 8px; border-radius: 50%; }
+.nchip.on i { box-shadow: 0 0 0 1.5px #fff; }
+.bandstage { padding: 10px 0; overflow: hidden; }
+.band { position: relative; overflow: hidden; width: 100%; }
+.band > svg.staff:first-child { position: absolute; left: 0; top: 0; z-index: 2; background: var(--card); }
+.bandmove { position: absolute; top: 0; will-change: transform; }
+.zone { position: absolute; top: 0; bottom: 0; border-radius: 12px; background: color-mix(in srgb, var(--brass) 14%, transparent); border: 2px solid color-mix(in srgb, var(--brass) 55%, transparent); z-index: 1; transition: background .15s, border-color .15s; pointer-events: none; }
+.zone.good { background: color-mix(in srgb, var(--ok) 22%, transparent); border-color: var(--ok); }
+.staff .note.cur ellipse, .staff .note.cur .stem { fill: var(--brass); stroke: var(--brass); }
+.staff .note.hit ellipse, .staff .note.hit .stem { fill: var(--ok); stroke: var(--ok); }
+.staff .note.miss ellipse, .staff .note.miss .stem { fill: var(--bad); stroke: var(--bad); }
+.live { display: flex; align-items: baseline; justify-content: center; gap: 12px; }
+.lname { font-size: 40px; font-weight: 800; color: var(--brass); }
+.lname.idle { opacity: .3; }
+.lcent { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 80px; }
+.stage.flashok { border-color: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 40%, transparent); }
+.stage.flashbad { border-color: var(--bad); }
+.stage .staff { max-height: 230px; margin: 0 auto; }

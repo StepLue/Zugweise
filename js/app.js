@@ -115,7 +115,7 @@ function route() {
   window.scrollTo(0, 0);
   $app.replaceChildren();
   if (!a) return viewHome();
-  if (a === 'learn' && b === 'spiel' && c) return viewMic(c);
+  if (a === 'learn' && b === 'spiel' && c) return viewSpiel(c);
   if (a === 'learn' && MODES[b]) return c ? viewLearn(b, c) : viewTonart(b);
   if (a === 'natur') return viewNatur();
   if (a === 'reverse') return viewReverse();
@@ -659,6 +659,25 @@ function viewTempo() {
 }
 
 // ---------- Mikrofon ----------
+function micErrorBox(e) {
+  const why = {
+        NotAllowedError: ['Das Mikrofon ist für diese App gesperrt.', [
+          'In Chrome: auf das Schloss bzw. Einstellungs-Symbol links neben der Adresse tippen → Berechtigungen → Mikrofon → Zulassen.',
+          'Als installierte App: Chrome → ⋮ → Einstellungen → Website-Einstellungen → Mikrofon → diese Seite auf „Zulassen“ stellen.',
+          'Außerdem prüfen: Android-Einstellungen → Apps → Chrome → Berechtigungen → Mikrofon → „Bei Nutzung der App zulassen“.',
+          'Danach die App ganz schließen und neu öffnen.']],
+        SecurityError: ['Der Browser blockiert das Mikrofon aus Sicherheitsgründen.', ['Die App über die https-Adresse von GitHub öffnen.']],
+        InsecureContext: ['Die App läuft nicht über https.', ['Die App über die https://…github.io-Adresse öffnen, nicht als Datei oder über http.']],
+        NoMediaDevices: ['Dieser Browser unterstützt kein Mikrofon.', ['Bitte Chrome verwenden.']],
+        NotFoundError: ['Es wurde kein Mikrofon gefunden.', ['Prüfen, ob ein Headset oder Bluetooth-Gerät das Mikrofon belegt.']],
+        NotReadableError: ['Das Mikrofon wird gerade von einer anderen App benutzt.', ['Andere Apps mit Mikrofon (Telefon, Sprachaufnahme, Stimmgerät-App) schließen und nochmal versuchen.']],
+      }[e.name] || ['Das Mikrofon konnte nicht gestartet werden.', ['Die App ganz schließen und neu öffnen, dann nochmal versuchen.']];
+  return h('div', { class: 'card micerr' },
+        h('div', { class: 'fb bad' }, why[0]),
+        h('ol', {}, ...why[1].map(t => h('li', {}, t))),
+        h('div', { class: 'muted small' }, `Fehlercode: ${e.name || 'unbekannt'}${e.message ? ' – ' + e.message : ''}`));
+}
+
 function viewMic(tonart) {
   const main = h('main');
   if (tonart) (store.data.lastTonart ??= {}).spiel = tonart, store.save();
@@ -729,22 +748,7 @@ function viewMic(tonart) {
       startBtn.replaceChildren('Mikrofon stoppen'); startBtn.classList.remove('primary');
     } catch (e) {
       P.stop();
-      const why = {
-        NotAllowedError: ['Das Mikrofon ist für diese App gesperrt.', [
-          'In Chrome: auf das Schloss bzw. Einstellungs-Symbol links neben der Adresse tippen → Berechtigungen → Mikrofon → Zulassen.',
-          'Als installierte App: Chrome → ⋮ → Einstellungen → Website-Einstellungen → Mikrofon → diese Seite auf „Zulassen“ stellen.',
-          'Außerdem prüfen: Android-Einstellungen → Apps → Chrome → Berechtigungen → Mikrofon → „Bei Nutzung der App zulassen“.',
-          'Danach die App ganz schließen und neu öffnen.']],
-        SecurityError: ['Der Browser blockiert das Mikrofon aus Sicherheitsgründen.', ['Die App über die https-Adresse von GitHub öffnen.']],
-        InsecureContext: ['Die App läuft nicht über https.', ['Die App über die https://…github.io-Adresse öffnen, nicht als Datei oder über http.']],
-        NoMediaDevices: ['Dieser Browser unterstützt kein Mikrofon.', ['Bitte Chrome verwenden.']],
-        NotFoundError: ['Es wurde kein Mikrofon gefunden.', ['Prüfen, ob ein Headset oder Bluetooth-Gerät das Mikrofon belegt.']],
-        NotReadableError: ['Das Mikrofon wird gerade von einer anderen App benutzt.', ['Andere Apps mit Mikrofon (Telefon, Sprachaufnahme, Stimmgerät-App) schließen und nochmal versuchen.']],
-      }[e.name] || ['Das Mikrofon konnte nicht gestartet werden.', ['Die App ganz schließen und neu öffnen, dann nochmal versuchen.']];
-      fb.replaceChildren(h('div', { class: 'card micerr' },
-        h('div', { class: 'fb bad' }, why[0]),
-        h('ol', {}, ...why[1].map(t => h('li', {}, t))),
-        h('div', { class: 'muted small' }, `Fehlercode: ${e.name || 'unbekannt'}${e.message ? ' – ' + e.message : ''}`)));
+      fb.replaceChildren(micErrorBox(e));
     }
   };
 
@@ -761,6 +765,262 @@ function viewMic(tonart) {
   }
   nameEl.classList.add('idle');
   render();
+}
+
+// ---------- Spiel die Note (Lernweg 4) ----------
+function spielSettings() {
+  return (store.data.spiel ??= { sel: {}, mode: 'band', len: 20, speed: 'wait', zug: false });
+}
+function spielNotes(tonart) {
+  if (tonart === 'stamm') return { notes: M.naturalsInRange(40, 77), sig: null, accMode: 'each', key: 'stamm' };
+  if (tonart === 'mix') {
+    const notes = [];
+    for (let m = 40; m <= 77; m++) for (const n of M.spellingsOf(m)) if (!M.isRareSpelling(n)) notes.push(n);
+    return { notes, sig: null, accMode: 'each', key: 'mix' };
+  }
+  applyTonart(tonart);
+  const sc = scaleState();
+  const keys = sc.mode === 'dur' ? M.MAJOR_KEYS : M.MINOR_KEYS;
+  const tonic = keys[sc.key];
+  const form = sc.mode === 'dur' ? 'dur' : sc.form;
+  return { notes: M.scaleToneRange(tonic, sc.mode, form, 40, 77), sig: M.keySignature(tonic, sc.mode), accMode: sc.accMode, key: tonart + (sc.mode === 'moll' ? '/' + form : '') };
+}
+function starterNotes(notes, k = 3) {
+  return [...notes].sort((a, b) => Math.abs(M.midiOf(a) - 53) - Math.abs(M.midiOf(b) - 53) || M.midiOf(a) - M.midiOf(b)).slice(0, k);
+}
+
+function viewSpiel(tonart) {
+  (store.data.lastTonart ??= {}).spiel = tonart; store.save();
+  const tShort = tonart === 'mix' ? 'Gemischt' : tonart === 'stamm' ? 'Stammtöne' : tonartLabel(tonart);
+  const main = h('main');
+  $app.append(header(`Spielen · ${tShort}`, '#/learn/spiel'), main);
+  const cfg = spielSettings();
+  let raf = 0, onPitchCb = null;
+  cleanup = () => { cancelAnimationFrame(raf); P.stop(); };
+
+  // ---------- Einstellungen / Notenauswahl ----------
+  function setup() {
+    cancelAnimationFrame(raf); onPitchCb = null;
+    const src = spielNotes(tonart);
+    const ids = src.notes.map(M.idOf);
+    let sel = (cfg.sel[src.key] || []).filter(id => ids.includes(id));
+    if (!sel.length) sel = starterNotes(src.notes).map(M.idOf);
+    const save = () => { cfg.sel[src.key] = sel; store.save(); };
+    save();
+    const chipsBox = h('div', { class: 'chips notechips' });
+    const preview = h('div', { class: 'staffscroll' });
+    const countEl = h('span', { class: 'muted small' });
+    const drawSel = () => {
+      chipsBox.replaceChildren(...src.notes.map(n => {
+        const id = M.idOf(n), on = sel.includes(id), ps = M.positionsOf(n);
+        return h('button', { class: 'chip nchip' + (on ? ' on' : ''), onclick: () => { sel = on ? sel.filter(x => x !== id) : [...sel, id]; save(); drawSel(); if (!on) play(n); } },
+          M.noteName(n), ps ? h('i', { style: { background: M.POS_COLORS[ps[0]] } }) : null);
+      }));
+      const chosen = src.notes.filter(n => sel.includes(M.idOf(n)));
+      preview.replaceChildren(chosen.length ? renderStaff(chosen.map(n => ({ note: n })), { sig: src.sig, accMode: src.accMode, names: true, zug: cfg.zug, fit: chosen.length <= 8, scale: 1.05, onTap: (k) => play(chosen[k]) }) : h('p', { class: 'muted' }, 'Noch keine Note ausgewählt.'));
+      countEl.textContent = `${chosen.length} ausgewählt`;
+    };
+    const sc = scaleState();
+    const isScale = tonart !== 'stamm' && tonart !== 'mix';
+    const opts = h('div', { class: 'card picker' },
+      h('div', { class: 'ctitle' }, 'Übung'),
+      h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Art'), seg([['band', 'Laufband'], ['single', 'Einzeln']], cfg.mode, v => { cfg.mode = v; store.save(); setup(); }, 'small')),
+      cfg.mode === 'band' ? h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Tempo'), seg([['wait', 'Wartet'], ['slow', 'Langsam'], ['mid', 'Mittel'], ['fast', 'Schnell']], cfg.speed, v => { cfg.speed = v; store.save(); setup(); }, 'small')) : null,
+      cfg.mode === 'band' ? h('p', { class: 'muted small' }, cfg.speed === 'wait' ? 'Das Band hält an der Markierung an, bis du die Note getroffen hast.' : 'Das Band läuft gleichmäßig weiter. Triffst du eine Note nicht rechtzeitig, zählt sie als verpasst.') : null,
+      h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Anzahl Noten'), seg([[10, '10'], [20, '20'], [30, '30'], [50, '50']], cfg.len, v => { cfg.len = v; store.save(); setup(); }, 'small')),
+      h('div', { class: 'prow' }, toggle('Zug anzeigen', cfg.zug, v => { cfg.zug = v; store.save(); drawSel(); })),
+      isScale && sc.mode === 'moll' ? h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Moll-Form'), seg(M.MOLL_FORMS, sc.form, v => { sc.form = v; store.save(); setup(); }, 'small')) : null,
+      isScale ? h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Vorzeichen'), seg([['sig', 'Vorzeichnung'], ['each', 'Vor jeder Note']], sc.accMode, v => { sc.accMode = v; store.save(); setup(); }, 'small')) : null,
+    );
+    const fb = h('div', { class: 'feedback' });
+    main.replaceChildren(
+      h('div', { class: 'card' },
+        h('div', { class: 'ctitle' }, 'Welche Noten möchtest du spielen?'),
+        h('p', { class: 'muted small' }, 'Fang mit wenigen Noten an und nimm nach und nach mehr dazu. Antippen wählt eine Note aus oder ab.'),
+        h('div', { class: 'toggles' },
+          h('button', { class: 'btn ghost', onclick: () => { sel = starterNotes(src.notes).map(M.idOf); save(); drawSel(); } }, '3 zum Einstieg'),
+          h('button', { class: 'btn ghost', onclick: () => { sel = [...ids]; save(); drawSel(); } }, 'Alle'),
+          h('button', { class: 'btn ghost', onclick: () => { sel = []; save(); drawSel(); } }, 'Keine'),
+          h('div', { class: 'grow' }), countEl),
+        chipsBox),
+      h('div', { class: 'card' }, h('div', { class: 'ctitle' }, 'Deine Auswahl'), preview),
+      opts,
+      h('button', { class: 'btn primary wide', onclick: async () => {
+        const chosen = src.notes.filter(n => sel.includes(M.idOf(n)));
+        if (!chosen.length) { toast('Wähle mindestens eine Note aus.'); return; }
+        if (!P.isRunning()) {
+          try { await P.start((r) => onPitchCb && onPitchCb(r)); } catch (e) { P.stop(); fb.replaceChildren(micErrorBox(e)); return; }
+        }
+        keepAwake();
+        run(chosen, src);
+      } }, icon('mic', 18), 'Übung starten'),
+      fb,
+    );
+    drawSel();
+  }
+
+  // ---------- Übung ----------
+  function makeSequence(chosen, n) {
+    const seq = []; let last = null;
+    for (let i = 0; i < n; i++) {
+      let x, g = 0;
+      do { x = pick(chosen); } while (chosen.length > 1 && last && M.sameNote(x, last) && g++ < 20);
+      seq.push(x); last = x;
+    }
+    return seq;
+  }
+
+  function run(chosen, src) {
+    const N = cfg.len;
+    const seq = makeSequence(chosen, N);
+    const res = new Array(N).fill(null);
+    let cur = 0, holdStart = 0, finished = false;
+    const band = cfg.mode === 'band';
+    const HOLD = band && cfg.speed !== 'wait' ? 220 : 380;
+    const TOL = 45;
+
+    const live = h('div', { class: 'live' }, h('b', { class: 'lname idle' }, '–'), h('span', { class: 'lcent' }, ''));
+    const lname = live.firstChild, lcent = live.lastChild;
+    const prog = h('div', { class: 'muted small' });
+    const stage = h('div', { class: 'card stage' });
+    const updProg = () => { prog.textContent = `Note ${Math.min(cur + 1, N)} von ${N} · getroffen: ${res.filter(r => r === 'hit').length}`; };
+
+    main.replaceChildren(
+      h('div', { class: 'qtop' }, h('button', { class: 'btn ghost', onclick: () => { finished = true; setup(); } }, 'Abbrechen'), h('div', { class: 'grow' }), prog),
+      stage,
+      live,
+      h('div', { class: 'toggles' },
+        h('button', { class: 'btn ghost', onclick: () => { if (seq[cur]) { A.playMidi(M.midiOf(seq[cur])); } } }, icon('play', 16), 'Vorspielen'),
+        h('div', { class: 'grow' }),
+        h('button', { class: 'btn ghost', onclick: () => miss() }, 'Überspringen')),
+    );
+    updProg();
+
+    // Darstellung
+    let staffSvg = null, scale = 1, Wv = 0, clefPx = 0, pxPerNote = 0, zoneX = 0, L = 0, progress = 0, moving = null, zone = null;
+    const minD = Math.min(...seq.map(M.diaOf)), maxD = Math.max(...seq.map(M.diaOf));
+    const range = [Math.min(17, minD - 8), Math.max(27, maxD + 8)];
+    if (band) {
+      const clef = renderStaff([], { sig: src.sig, accMode: src.accMode, fixedRange: range, openEnd: true });
+      const vbH = clef.vbHeight;
+      stage.classList.add('bandstage');
+      const wrap = h('div', { class: 'band' });
+      stage.replaceChildren(wrap);
+      const W = wrap.clientWidth || 340;
+      scale = Math.min(1.6, 190 / vbH);
+      clef.style.width = clef.vbWidth * scale + 'px'; clef.style.height = vbH * scale + 'px';
+      clefPx = clef.vbWidth * scale;
+      Wv = W - clefPx;
+      pxPerNote = Wv / 3.4;
+      const SPv = pxPerNote / scale;
+      staffSvg = renderStaff(seq.map(n => ({ note: n })), { noClef: true, startX: Wv / scale + 20, spacing: SPv, sig: src.sig, accMode: src.accMode, fixedRange: range, zug: cfg.zug, openEnd: true, minWidth: SPv * N + 2 * Wv / scale + 60 });
+      staffSvg.style.width = staffSvg.vbWidth * scale + 'px'; staffSvg.style.height = staffSvg.vbHeight * scale + 'px';
+      moving = h('div', { class: 'bandmove', style: { left: clefPx + 'px' } }, staffSvg);
+      zoneX = Wv * 0.26;
+      zone = h('div', { class: 'zone', style: { left: (clefPx + zoneX - pxPerNote * 0.32) + 'px', width: (pxPerNote * 0.64) + 'px' } });
+      wrap.style.height = Math.max(clef.vbHeight, staffSvg.vbHeight) * scale + 'px';
+      wrap.append(clef, moving, zone);
+      L = (Wv - zoneX) / pxPerNote;
+    }
+    const noteEl = (i) => staffSvg && staffSvg.querySelector(`.note[data-i="${i}"]`);
+    const mark = () => {
+      if (!band) return;
+      for (let i = 0; i < N; i++) {
+        const e = noteEl(i); if (!e) continue;
+        e.classList.toggle('cur', i === cur && !finished);
+        e.classList.toggle('hit', res[i] === 'hit');
+        e.classList.toggle('miss', res[i] === 'miss');
+      }
+    };
+    const drawSingle = () => {
+      if (band) return;
+      const n = seq[cur]; if (!n) return;
+      const ps = M.positionsOf(n);
+      stage.replaceChildren(renderStaff([{ note: n }], { sig: src.sig, accMode: src.accMode, fit: true, spacing: 80, zug: cfg.zug }));
+    };
+
+    function hit() {
+      if (finished || res[cur]) return;
+      res[cur] = 'hit'; record('mic', M.idOf(seq[cur]), true);
+      next();
+    }
+    function miss() {
+      if (finished || cur >= N) return;
+      res[cur] = 'miss'; record('mic', M.idOf(seq[cur]), false);
+      next();
+    }
+    function next() {
+      holdStart = 0;
+      zone?.classList.remove('good');
+      if (!band) {
+        stage.classList.add(res[cur] === 'hit' ? 'flashok' : 'flashbad');
+        const was = cur; cur++;
+        updProg();
+        setTimeout(() => { stage.classList.remove('flashok', 'flashbad'); if (cur >= N) end(); else drawSingle(); }, res[was] === 'hit' ? 700 : 300);
+        return;
+      }
+      cur++; updProg(); mark();
+      if (cur >= N) setTimeout(end, 700);
+    }
+
+    onPitchCb = ({ freq, clarity }) => {
+      if (finished) return;
+      if (!freq || clarity < 0.8) { lname.classList.add('idle'); holdStart = 0; zone?.classList.remove('good'); return; }
+      lname.classList.remove('idle');
+      const mf = P.freqToMidi(freq), m = Math.round(mf), cents = Math.round((mf - m) * 100);
+      const t = seq[cur];
+      lname.textContent = M.noteName(t && M.midiOf(t) === m ? t : M.spellDefault(m));
+      lcent.textContent = `${cents > 0 ? '+' : ''}${cents} Cent`;
+      if (!t) return;
+      const inWindow = !band || (progress >= cur + L - 0.35);
+      if (inWindow && m === M.midiOf(t) && Math.abs(cents) <= TOL) {
+        if (!holdStart) holdStart = performance.now();
+        zone?.classList.add('good');
+        if (performance.now() - holdStart >= HOLD) hit();
+      } else { holdStart = 0; zone?.classList.remove('good'); }
+    };
+
+    // Bewegung
+    const speeds = { wait: 1 / 1.1, slow: 1 / 4, mid: 1 / 2.8, fast: 1 / 1.8 };
+    let lastT = performance.now();
+    function frame(t) {
+      if (finished) return;
+      const dt = Math.min(0.1, (t - lastT) / 1000); lastT = t;
+      const v = speeds[cfg.speed] || speeds.wait;
+      if (cfg.speed === 'wait') {
+        const stopAt = cur + L;
+        progress = Math.min(progress + v * dt * (progress < stopAt - 0.02 ? 1 : 0), Math.max(progress, stopAt));
+      } else {
+        progress += v * dt;
+        if (cur < N && progress > cur + L + 0.5) miss();
+      }
+      const x0 = staffSvg.xOf(0) * scale;
+      moving.style.transform = `translateX(${Wv - x0 - progress * pxPerNote}px)`;
+      raf = requestAnimationFrame(frame);
+    }
+    if (band) { mark(); raf = requestAnimationFrame((t) => { lastT = t; frame(t); }); } else drawSingle();
+
+    function end() {
+      if (finished) return;
+      finished = true; cancelAnimationFrame(raf); onPitchCb = null;
+      store.data.stats.rounds++; store.save();
+      const hits = res.filter(r => r === 'hit').length;
+      const pct = Math.round(hits / N * 100);
+      const missed = []; seq.forEach((n, i) => { if (res[i] !== 'hit' && !missed.some(x => M.sameNote(x, n))) missed.push(n); });
+      main.replaceChildren(
+        h('div', { class: 'card result' },
+          h('div', { class: 'ring', style: { '--p': pct, '--rc': pct >= 90 ? 'var(--ok)' : pct >= 70 ? 'var(--brass)' : 'var(--bad)' } }, h('b', {}, `${pct} %`)),
+          h('div', { class: 'rtext' }, h('div', { class: 'big' }, `${hits} von ${N} getroffen`), h('div', { class: 'muted' }, pct >= 90 ? 'Sehr gut – nimm eine Note dazu!' : pct >= 70 ? 'Gut – weiter so.' : 'Dranbleiben, das wird.'))),
+        missed.length ? h('div', { class: 'card' }, h('div', { class: 'ctitle' }, 'Diese Noten hast du nicht getroffen'),
+          h('div', { class: 'staffscroll' }, renderStaff(missed.map(n => ({ note: n })), { sig: src.sig, accMode: src.accMode, names: true, zug: true, scale: 1.1, onTap: (k) => play(missed[k]) }))) : null,
+        h('div', { class: 'rbtns' },
+          h('button', { class: 'btn primary', onclick: () => run(chosen, src) }, 'Nochmal'),
+          h('button', { class: 'btn', onclick: setup }, 'Noten ändern')),
+      );
+    }
+  }
+
+  setup();
 }
 
 // ---------- Statistik ----------
@@ -834,7 +1094,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.4 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.5 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();
