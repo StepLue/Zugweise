@@ -236,3 +236,25 @@ export function mixedChoices(n, rnd = Math.random) {
   }
   return set.slice(0, 6).sort((a, b) => a.letter - b.letter || a.acc - b.acc);
 }
+
+// Tonleiter über den ganzen Tonumfang, beginnend beim tiefsten Grundton im Bereich
+function degreeNote(tonic, ivs7, k, startOct) {
+  const [L, A] = tonic;
+  const letter = (L + k) % 7;
+  const wrap = Math.floor((L + k) / 7);
+  const target = NAT_PC[L] + A + ivs7[k % 7] + 12 * Math.floor(k / 7);
+  return mk(letter, target - (NAT_PC[letter] + 12 * wrap), startOct + wrap);
+}
+export function scaleFull(tonic, mode, form, lo, hi) {
+  const up = mode === 'dur' ? IV.dur : form === 'melodisch' ? IV.melodisch : IV[form];
+  let o = 0;
+  while (midiOf(degreeNote(tonic, up, 0, o)) < lo) o++;
+  const asc = [];
+  for (let k = 0; ; k++) { const n = degreeNote(tonic, up, k, o); if (midiOf(n) > hi) break; asc.push(n); }
+  if (mode === 'moll' && form === 'melodisch') {
+    const down = [];
+    for (let k = asc.length - 2; k >= 0; k--) down.push(degreeNote(tonic, IV.natuerlich, k, o));
+    return [...asc, { bar: true }, ...down];
+  }
+  return asc;
+}

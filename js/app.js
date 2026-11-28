@@ -169,16 +169,19 @@ function viewHome() {
 // ---------- Tonleiter-Auswahl ----------
 function scaleState() { return store.data.scale; }
 function currentScale() {
-  const sc = scaleState(), lv = level();
+  const sc = scaleState();
   const keys = sc.mode === 'dur' ? M.MAJOR_KEYS : M.MINOR_KEYS;
   const tonic = keys[Math.min(sc.key, keys.length - 1)];
   const form = sc.mode === 'dur' ? 'dur' : sc.form;
-  const octs = M.scaleOctaves(tonic, sc.mode, form, lv.lo, lv.hi);
+  // Lage: jede Oktave ab Grundton, die auf der Posaune spielbar ist (E bis f″), oder ganzer Tonumfang ab Grundton
+  const octs = M.scaleOctaves(tonic, sc.mode, form, 40, 77);
   let oct = sc.oct;
   if (oct !== 'all' && !octs.includes(oct)) oct = octs.length ? octs[0] : 'all';
   const sig = M.keySignature(tonic, sc.mode);
-  const notes = oct === 'all' ? M.scaleToneRange(tonic, sc.mode, form, lv.lo, lv.hi) : M.scaleNotes(tonic, sc.mode, form, oct);
-  const pool = M.scaleToneRange(tonic, sc.mode, form, lv.lo, lv.hi);
+  const notes = oct === 'all' ? M.scaleFull(tonic, sc.mode, form, 40, 77) : M.scaleNotes(tonic, sc.mode, form, oct);
+  // Abgefragt werden genau die angezeigten Töne
+  const pool = [];
+  for (const n of notes) if (!n.bar && !pool.some(p => M.sameNote(p, n))) pool.push(n);
   // Antwortauswahl in Leiter-Reihenfolge
   const order = [];
   for (const n of M.scaleNotes(tonic, sc.mode, form, 3)) if (!n.bar && !order.some(o => M.samePcName(o, n))) order.push({ letter: n.letter, acc: n.acc });
@@ -308,7 +311,7 @@ function viewLearn(mode, tonart) {
     );
     main.append(
       h('div', { class: 'card' }, h('div', { class: 'ctitle' }, src.title), staffWrap, toggles),
-      h('p', { class: 'hint' }, 'Tippe eine Note an, um sie groß zu sehen und zu hören.'),
+      h('p', { class: 'hint' }, src.items.length > 10 ? 'Zum Weiterblättern die Notenzeile nach links wischen. Tippe eine Note an, um sie groß zu sehen und zu hören.' : 'Tippe eine Note an, um sie groß zu sehen und zu hören.'),
       detail,
     );
     draw();
@@ -783,7 +786,10 @@ function spielNotes(tonart) {
   const keys = sc.mode === 'dur' ? M.MAJOR_KEYS : M.MINOR_KEYS;
   const tonic = keys[sc.key];
   const form = sc.mode === 'dur' ? 'dur' : sc.form;
-  return { notes: M.scaleToneRange(tonic, sc.mode, form, 40, 77), sig: M.keySignature(tonic, sc.mode), accMode: sc.accMode, key: tonart + (sc.mode === 'moll' ? '/' + form : '') };
+  const full = [];
+  for (const n of M.scaleFull(tonic, sc.mode, form, 40, 77)) if (!n.bar && !full.some(x => M.sameNote(x, n))) full.push(n);
+  full.sort((a, b) => M.midiOf(a) - M.midiOf(b));
+  return { notes: full, sig: M.keySignature(tonic, sc.mode), accMode: sc.accMode, key: tonart + (sc.mode === 'moll' ? '/' + form : '') };
 }
 function starterNotes(notes, k = 3) {
   return [...notes].sort((a, b) => Math.abs(M.midiOf(a) - 53) - Math.abs(M.midiOf(b) - 53) || M.midiOf(a) - M.midiOf(b)).slice(0, k);
@@ -1094,7 +1100,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.5 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.6 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();
