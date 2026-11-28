@@ -7,6 +7,8 @@ export async function start(onPitch) {
   stop();
   if (!window.isSecureContext) { const e = new Error('insecure'); e.name = 'InsecureContext'; throw e; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { const e = new Error('nomedia'); e.name = 'NoMediaDevices'; throw e; }
+  // iPad/iPhone: Für die Aufnahme muss die Audio-Sitzung auf Wiedergabe + Aufnahme stehen
+  try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch { /* ignore */ }
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -39,6 +41,7 @@ export function stop() {
   stream = null;
   if (ctx) ctx.close();
   ctx = null;
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* ignore */ }
 }
 
 export function detect(b, sr) {
