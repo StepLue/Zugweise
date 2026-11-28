@@ -178,7 +178,7 @@ function currentScale() {
   let oct = sc.oct;
   if (oct !== 'all' && !octs.includes(oct)) oct = octs.length ? octs[0] : 'all';
   const sig = M.keySignature(tonic, sc.mode);
-  const notes = oct === 'all' ? M.scaleFull(tonic, sc.mode, form, 40, 77) : M.scaleNotes(tonic, sc.mode, form, oct);
+  const notes = oct === 'all' ? M.scaleFull(tonic, sc.mode, form) : M.scaleNotes(tonic, sc.mode, form, oct);
   // Abgefragt werden genau die angezeigten Töne
   const pool = [];
   for (const n of notes) if (!n.bar && !pool.some(p => M.sameNote(p, n))) pool.push(n);
@@ -198,7 +198,7 @@ function scalePicker(onChange, extra) {
     h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Lage'),
       h('div', { class: 'chips' },
         ...cur.octs.map(o => chip(`ab ${M.noteName(M.mk(cur.tonic[0], cur.tonic[1], o))}`, cur.oct === o, () => set('oct', o), 'sm')),
-        chip('Ganzer Posaunen-Tonumfang', cur.oct === 'all', () => set('oct', 'all'), 'sm'))),
+        chip('Ganzer Tonumfang E – f′', cur.oct === 'all', () => set('oct', 'all'), 'sm'))),
     h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Vorzeichen'), seg([['sig', 'Vorzeichnung'], ['each', 'Vor jeder Note']], sc.accMode, v => set('accMode', v), 'small')),
     extra || null,
   );
@@ -820,7 +820,7 @@ function spielNotes(tonart) {
   const tonic = keys[sc.key];
   const form = sc.mode === 'dur' ? 'dur' : sc.form;
   const full = [];
-  for (const n of M.scaleFull(tonic, sc.mode, form, 40, 77)) if (!n.bar && !full.some(x => M.sameNote(x, n))) full.push(n);
+  for (const n of M.scaleToneRange(tonic, sc.mode, form, 40, 77)) if (!full.some(x => M.sameNote(x, n))) full.push(n);
   full.sort((a, b) => M.midiOf(a) - M.midiOf(b));
   return { notes: full, sig: M.keySignature(tonic, sc.mode), accMode: sc.accMode, key: tonart + (sc.mode === 'moll' ? '/' + form : '') };
 }
@@ -1133,7 +1133,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.8 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.9 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();

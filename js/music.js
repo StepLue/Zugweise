@@ -250,17 +250,9 @@ function scaleTones(tonic, ivs7, lo, hi) {
   for (let k = 0; k < 80; k++) { const n = degreeNote(tonic, ivs7, k, 0); const m = midiOf(n); if (m > hi) break; if (m >= lo) out.push(n); }
   return out;
 }
-// Ab dem tiefsten Grundton hinauf bis zum höchsten Ton, dann ganz hinunter bis zum tiefsten Ton und wieder hinauf zum Grundton
-export function scaleFull(tonic, mode, form, lo, hi) {
+// Ganzer Tonumfang: einmal aufwärts vom tiefsten Leiterton ab E bis f′ (gut erreichbar, auch für Nicht-Profis)
+export const FULL_LO = 40, FULL_HI = 65;
+export function scaleFull(tonic, mode, form, lo = FULL_LO, hi = FULL_HI) {
   const up = mode === 'dur' ? IV.dur : form === 'melodisch' ? IV.melodisch : IV[form];
-  const down = mode === 'moll' && form === 'melodisch' ? IV.natuerlich : up;
-  const asc = scaleTones(tonic, up, lo, hi), desc = scaleTones(tonic, down, lo, hi);
-  const ti = asc.findIndex(n => n.letter === tonic[0] && n.acc === tonic[1]);
-  const p1 = asc.slice(ti);
-  const top = midiOf(p1[p1.length - 1]);
-  const p2 = desc.filter(n => midiOf(n) < top).reverse();
-  const bottom = p2.length ? midiOf(p2[p2.length - 1]) : top;
-  const tonicMidi = midiOf(p1[0]);
-  const p3 = asc.filter(n => midiOf(n) > bottom && midiOf(n) <= tonicMidi);
-  return [...p1, { bar: true }, ...p2, ...(p3.length ? [{ bar: true }, ...p3] : [])];
+  return scaleTones(tonic, up, lo, hi);
 }
