@@ -1133,7 +1133,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.9 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.9.1 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();
