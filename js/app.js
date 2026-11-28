@@ -189,7 +189,7 @@ function currentScale() {
   return { tonic, form, octs, oct, sig, notes, pool, choices, name: M.keyName(tonic, sc.mode) + (sc.mode === 'moll' ? ` (${M.MOLL_FORMS.find(f => f[0] === form)[1]})` : '') };
 }
 
-function scalePicker(onChange) {
+function scalePicker(onChange, extra) {
   const sc = scaleState();
   const cur = currentScale();
   const set = (k, v) => { sc[k] = v; store.save(); onChange(); };
@@ -200,6 +200,7 @@ function scalePicker(onChange) {
         ...cur.octs.map(o => chip(`ab ${M.noteName(M.mk(cur.tonic[0], cur.tonic[1], o))}`, cur.oct === o, () => set('oct', o), 'sm')),
         chip('Ganzer Tonumfang', cur.oct === 'all', () => set('oct', 'all'), 'sm'))),
     h('div', { class: 'prow' }, h('span', { class: 'plabel' }, 'Vorzeichen'), seg([['sig', 'Vorzeichnung'], ['each', 'Vor jeder Note']], sc.accMode, v => set('accMode', v), 'small')),
+    extra || null,
   );
 }
 
@@ -255,13 +256,17 @@ function viewLearn(mode, tonart) {
   let tab = sessionStorage.getItem('tab.' + key) || 'look';
   const backTo = `#/learn/${mode}`;
   let mixSet = null;
+  let tunerHandler = null;
+  cleanup = () => P.stop();
+  const tunerToggle = () => h('div', { class: 'prow' }, toggle('Stimmgerät einblenden', !!S().learnTuner, v => { S().learnTuner = v; store.save(); if (!v) P.stop(); render(); }));
   const main = h('main');
   $app.append(header(`${area.short} · ${tonart === 'mix' ? 'Gemischt' : tonart === 'stamm' ? 'Stammtöne' : tonartLabel(tonart)}`, backTo), main);
 
   function render() {
     main.replaceChildren();
     main.append(seg([['look', 'Anschauen'], ['quiz', 'Abfragen']], tab, v => { tab = v; sessionStorage.setItem('tab.' + key, v); render(); }, 'big'));
-    if (area.kind === 'scale') main.append(scalePicker(render));
+    if (tab !== 'look') P.stop();
+    if (area.kind === 'scale') main.append(scalePicker(render, tab === 'look' ? tunerToggle() : null));
     if (tab === 'look') renderLook(); else renderQuizStart();
   }
 
@@ -287,9 +292,22 @@ function viewLearn(mode, tonart) {
     const staffWrap = h('div', { class: 'staffscroll' });
     const detail = h('div', { class: 'detail' });
     const noteIdx = src.items.map((it, i) => it.note ? i : -1).filter(i => i >= 0);
+    const hits = new Set(); let follow = 0;
+    const applyMarks = () => {
+      staffWrap.querySelectorAll('.note').forEach(e => {
+        const i = +e.dataset.i;
+        e.classList.toggle('hit', hits.has(i));
+        e.classList.toggle('cur', !!S().learnTuner && P.isRunning() && noteIdx[follow] === i);
+      });
+    };
     const draw = () => {
       const fit = src.items.length <= 10;
       staffWrap.replaceChildren(renderStaff(src.items, { sig: src.sig, accMode: src.accMode, names: showNames, zug: showZug, selected: sel, onTap: select, fit, scale: 1.15 }));
+      applyMarks();
+    };
+    const scrollTo = (i) => {
+      const el = staffWrap.querySelector(`.note[data-i="${i}"]`);
+      if (el) { const r = el.getBoundingClientRect(), w = staffWrap.getBoundingClientRect(); if (r.left < w.left + 20 || r.right > w.right - 20) staffWrap.scrollBy({ left: r.left - w.left - w.width / 3, behavior: 'smooth' }); }
     };
     function select(i) {
       sel = i; draw();
@@ -309,8 +327,52 @@ function viewLearn(mode, tonart) {
       area.kind === 'mixed' ? h('button', { class: 'btn ghost', onclick: () => { mixSet = null; render(); } }, icon('shuffle', 18), 'Neu mischen') : null,
       h('button', { class: 'btn ghost', onclick: () => { A.unlock(); if (S().sound) A.playSequence(src.items.filter(i => i.note).map(i => M.midiOf(i.note))); } }, icon('play', 18), 'Alle anhören'),
     );
+    // Stimmgerät zum Mitspielen
+    let tunerCard = null;
+    if (S().learnTuner) {
+      const nameEl = h('div', { class: 'mname idle' }, '–');
+      const centEl = h('div', { class: 'mcent' }, '');
+      const needle = h('div', { class: 'needle' });
+      const gauge = h('div', { class: 'gauge' }, h('div', { class: 'gscale' }, h('span', {}, '−50'), h('span', {}, '0'), h('span', {}, '+50')), h('div', { class: 'gzone' }), needle);
+      const info = h('div', { class: 'muted small' });
+      const fbm = h('div');
+      const btn = h('button', { class: 'btn wide' + (P.isRunning() ? '' : ' primary') }, P.isRunning() ? 'Mikrofon stoppen' : [icon('mic', 18), 'Mikrofon starten']);
+      const updInfo = () => { info.textContent = noteIdx.length ? `Mitspielen: ${hits.size} von ${noteIdx.length} Noten` : ''; };
+      let stableMidi = null, stableSince = 0;
+      tunerHandler = ({ freq, clarity }) => {
+        if (!freq || clarity < 0.8) { nameEl.classList.add('idle'); needle.style.opacity = 0.25; stableMidi = null; return; }
+        nameEl.classList.remove('idle'); needle.style.opacity = 1;
+        const mf = P.freqToMidi(freq), m = Math.round(mf), cents = Math.round((mf - m) * 100);
+        const match = src.items.find(it => it.note && M.midiOf(it.note) === m);
+        nameEl.textContent = M.noteName(match ? match.note : M.spellDefault(m));
+        centEl.textContent = `${cents > 0 ? '+' : ''}${cents} Cent`;
+        needle.style.left = `${50 + Math.max(-50, Math.min(50, cents))}%`;
+        needle.classList.toggle('good', Math.abs(cents) <= 10);
+        if (m !== stableMidi) { stableMidi = m; stableSince = performance.now(); return; }
+        if (performance.now() - stableSince < 200 || Math.abs(cents) > 40) return;
+        const want = noteIdx[follow];
+        if (want != null && M.midiOf(src.items[want].note) === m && !hits.has(want)) {
+          hits.add(want); follow = Math.min(follow + 1, noteIdx.length);
+          applyMarks(); updInfo(); scrollTo(noteIdx[Math.min(follow, noteIdx.length - 1)]);
+          if (follow >= noteIdx.length) fbm.replaceChildren(h('div', { class: 'fb ok' }, icon('check', 20), 'Ganz durchgespielt – super!'));
+        }
+      };
+      btn.onclick = async () => {
+        if (P.isRunning()) { P.stop(); render(); return; }
+        try { await P.start((r) => tunerHandler && tunerHandler(r)); keepAwake(); render(); }
+        catch (e) { P.stop(); fbm.replaceChildren(micErrorBox(e)); }
+      };
+      updInfo();
+      tunerCard = h('div', { class: 'card meter' }, nameEl, gauge, centEl,
+        h('p', { class: 'muted small' }, 'Spiel die Noten der Reihe nach – die nächste ist gelb, getroffene werden grün.'),
+        info,
+        h('div', { class: 'toggles', style: { justifyContent: 'center' } }, h('button', { class: 'btn ghost', onclick: () => { hits.clear(); follow = 0; fbm.replaceChildren(); applyMarks(); updInfo(); scrollTo(noteIdx[0]); } }, 'Von vorn')),
+        btn, fbm);
+    } else tunerHandler = null;
     main.append(
+      area.kind !== 'scale' ? h('div', { class: 'card' }, tunerToggle()) : null,
       h('div', { class: 'card' }, h('div', { class: 'ctitle' }, src.title), staffWrap, toggles),
+      tunerCard,
       h('p', { class: 'hint' }, src.items.length > 10 ? 'Zum Weiterblättern die Notenzeile nach links wischen. Tippe eine Note an, um sie groß zu sehen und zu hören.' : 'Tippe eine Note an, um sie groß zu sehen und zu hören.'),
       detail,
     );
@@ -1100,7 +1162,7 @@ function viewSettings() {
         h('div', { class: 'ctitle' }, 'Daten'),
         h('p', { class: 'muted small' }, 'Alle Daten bleiben nur auf diesem Gerät.'),
         h('button', { class: 'btn danger', onclick: () => { if (confirm('Statistik wirklich löschen?')) { store.reset(); toast('Statistik gelöscht'); } } }, 'Statistik zurücksetzen')),
-      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.6 · Tenorposaune in B, Bassschlüssel'),
+      h('p', { class: 'muted small center' }, 'Zugweise · Version 1.7 · Tenorposaune in B, Bassschlüssel'),
     );
   }
   render();
